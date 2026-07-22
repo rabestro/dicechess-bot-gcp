@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# packages: read — resolves lv.id.jc:dicechess-engine-scala and dicechess-bot-runtime from GitHub
+# Packages with the default token (same pattern as dicechess-bot-azure).
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  test:
+    name: JVM tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: sbt
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Run tests
+        run: sbt test
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  assembly:
+    name: Fat jar + boot smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: sbt
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Build fat jar
+        run: sbt assembly
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke-run the jar (handshake)
+        run: |
+          DICECHESS_WEBHOOK_SECRET=smoke PORT=8099 java -jar target/dicechess-bot-gcp.jar &
+          sleep 3
+          RESPONSE=$(curl -s -X POST http://127.0.0.1:8099/api/webhook \
+            -H "Content-Type: application/json" \
+            -d '{"type":"verification","nonce":"ci-smoke"}')
+          echo "handshake response: $RESPONSE"
+          echo "$RESPONSE" | grep -q '"nonce":"ci-smoke"' || (echo "handshake failed" && exit 1)
+          kill %1

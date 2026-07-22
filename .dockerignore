@@ -1,0 +1,4 @@
+# Runtime-only image: the fat jar is built by `sbt assembly` beforehand. Send only that jar as the
+# build context so the Docker build is fast and needs no registry credentials.
+*
+!target/dicechess-bot-gcp.jar
