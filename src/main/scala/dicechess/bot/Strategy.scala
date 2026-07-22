@@ -20,9 +20,6 @@ import scala.util.Random
   * [[dicechess.engine.search.ClockState]] and hand the resulting deadline to the search — keeping
   * every game-logic decision in the engine, exactly like `/play` and play-api do.
   *
-  * @param incrementMs
-  *   Fischer increment in ms. Not on the webhook wire yet (see dicechess-bot-runtime#7), so it is
-  *   configured; `0` means sudden-death budgeting, which is safe (slightly under-thinks, never flags).
   * @param overheadBufferMs
   *   slack subtracted from the budget for the play-api↔Cloud Run round-trip and one uninterruptible
   *   rollout, so the realised think time stays short of the allocation.
@@ -30,7 +27,7 @@ import scala.util.Random
   *   per-turn deadline used when there is no clock to manage (unlimited control) — the unbounded
   *   rollout path can take tens of seconds on a high-branching roll, so the search is always bounded.
   */
-final class Strategy(incrementMs: Long, overheadBufferMs: Long, defaultThinkMs: Long):
+final class Strategy(overheadBufferMs: Long, defaultThinkMs: Long):
 
   /** DFEN in (the envelope's `state.dfen`), UCI micro-move path out. `Nil` = nothing to play (a
     * forced pass, an unusable DFEN, or a deadline too short for even the fallback) — the server
@@ -39,8 +36,11 @@ final class Strategy(incrementMs: Long, overheadBufferMs: Long, defaultThinkMs: 
     * @param remainingMillis
     *   the mover's own clock, or `None` when the control is unlimited / the clock is absent — then
     *   the search runs against a fixed default deadline (`defaultThinkMs`).
+    * @param incrementMillis
+    *   the per-turn Fischer increment in ms, taken straight from the wire (`ctx.clock().incrementMillis()`);
+    *   `0` for a control without one (sudden-death) — then the budget decays as the clock drains.
     */
-  def chooseMoves(dfen: String, remainingMillis: Option[Long]): List[String] =
+  def chooseMoves(dfen: String, remainingMillis: Option[Long], incrementMillis: Long): List[String] =
     FenParser.parse(dfen) match
       case Left(reason) =>
         System.err.println(s"[bot] unusable dfen: $reason")
@@ -49,7 +49,7 @@ final class Strategy(incrementMs: Long, overheadBufferMs: Long, defaultThinkMs: 
         val rng = new Random()
         val scored = remainingMillis match
           case Some(remaining) if remaining > 0 =>
-            val clock         = ClockState(remainingMs = remaining, incrementMs = incrementMs, moveNumber = state.fullMoveNumber)
+            val clock         = ClockState(remainingMs = remaining, incrementMs = incrementMillis, moveNumber = state.fullMoveNumber)
             val budgetMs      = TimeManager.budgetMs(clock, overheadBufferMs)
             val deadlineNanos = System.nanoTime() + budgetMs * 1_000_000L
             MonteCarloSearch.findBestMove(state, deadlineNanos, rng)
@@ -71,9 +71,10 @@ object Strategy:
     move.fromSquare.toNotation + move.toSquare.toNotation +
       move.promotionPieceType.map(_.asNotation).getOrElse("")
 
-  /** Production wiring: read the clock knobs from the environment with safe defaults. */
+  /** Production wiring: read the tuning knobs from the environment with safe defaults. The Fischer
+    * increment is no longer configured here — it now rides the wire (`ctx.clock().incrementMillis()`).
+    */
   def fromEnvironment: Strategy =
-    val incrementMs  = sys.env.get("LADDER_INCREMENT_MS").flatMap(_.toLongOption).getOrElse(0L)
     val overheadMs   = sys.env.get("OVERHEAD_BUFFER_MS").flatMap(_.toLongOption).getOrElse(300L)
     val defaultThink = sys.env.get("DEFAULT_THINK_MS").flatMap(_.toLongOption).getOrElse(2000L)
-    new Strategy(incrementMs, overheadMs, defaultThink)
+    new Strategy(overheadMs, defaultThink)

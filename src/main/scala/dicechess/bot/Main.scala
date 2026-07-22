@@ -14,10 +14,13 @@ import scala.jdk.CollectionConverters.*
   * Configuration (env vars; Cloud Run service settings in production):
   *   - `DICECHESS_WEBHOOK_SECRET` — the per-bot signing key from webhook registration. Absent, only
   *     the registration handshake succeeds (deliberate: register → set secret → play).
-  *   - `LADDER_INCREMENT_MS` — Fischer increment in ms (default `0`). A deployment-specific stand-in
-  *     until the increment rides the wire (dicechess-bot-runtime#7); set `3000` for the 300+3 ladder.
   *   - `OVERHEAD_BUFFER_MS` — slack subtracted from the time-managed budget for network round-trip
   *     plus one uninterruptible rollout (default `300`).
+  *   - `DEFAULT_THINK_MS` — per-turn deadline for an untimed game, where there is no clock to manage
+  *     (default `2000`).
+  *
+  * The Fischer increment is no longer configured — it arrives on the wire (`ctx.clock()`), so a
+  * bot on any Fischer control gets correct budgeting with no per-deployment setup.
   */
 object Main:
 
@@ -47,9 +50,13 @@ object Main:
     CustomHandlerServer.start(port, WebhookPath, new WebhookHandler(secret, adapt(strategy)))
 
   /** `dicechess-bot-runtime`'s strategy shape is a plain `java.util.function.Function` — a Scala
-    * lambda converts to it via SAM automatically. Unlike the aggressive bot, Monte-Carlo needs the
-    * clock, so this reads both `ctx.dfen()` and `ctx.remainingMillis()` (nullable → `Option`).
+    * lambda converts to it via SAM automatically. Monte-Carlo needs the clock, so this reads
+    * `ctx.clock()` (null for an untimed game): the mover's remaining time and the Fischer increment,
+    * both delivered on the wire since runtime 0.2.0. A missing increment coalesces to `0`.
     */
   private def adapt(strategy: Strategy): JFunction[TurnContext, java.util.List[String]] =
     (ctx: TurnContext) =>
-      strategy.chooseMoves(ctx.dfen(), Option(ctx.remainingMillis()).map(_.longValue)).asJava
+      val clock     = Option(ctx.clock())
+      val remaining = clock.map(_.remainingMillis())
+      val increment = clock.flatMap(c => Option(c.incrementMillis())).fold(0L)(_.longValue)
+      strategy.chooseMoves(ctx.dfen(), remaining, increment).asJava

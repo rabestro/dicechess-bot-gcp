@@ -34,11 +34,12 @@ phase-tapered fraction, hard-capped so a single turn can never flag the clock), 
 to that deadline. If the deadline elapses before any rollout finishes, the best material candidate
 is returned — a legal move always comes back.
 
-Two knobs, both with safe defaults:
+The Fischer increment comes straight from the wire (`ctx.clock().incrementMillis()`, runtime ≥ 0.2.0 —
+[dicechess-bot-runtime#7](https://github.com/rabestro/dicechess-bot-runtime/issues/7)), so there is
+nothing to configure for it. Two tuning knobs remain, both with safe defaults:
 
 | Env var | Default | Meaning |
 | --- | --- | --- |
-| `LADDER_INCREMENT_MS` | `0` | Fischer increment in ms. Not on the webhook wire yet ([dicechess-bot-runtime#7](https://github.com/rabestro/dicechess-bot-runtime/issues/7)); `0` is sudden-death budgeting — safe (slightly under-thinks, never flags). Set `3000` for the 300+3 ladder. |
 | `OVERHEAD_BUFFER_MS` | `300` | Slack subtracted from the budget for the play-api↔Cloud Run round-trip plus one uninterruptible rollout. |
 | `DEFAULT_THINK_MS` | `2000` | Per-turn deadline when there is no clock to manage (unlimited control), so a lobby game against a human stays responsive. |
 
@@ -122,11 +123,11 @@ curl -X POST "$BASE/bot/register" -H "Content-Type: application/json" \
 curl -X POST "$BASE/bot/webhook" -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" -d "{\"url\":\"$URL\"}"
 
-# 3. Give the service its secret + the ladder increment (the update restarts the service).
-#    --update-env-vars adds without clearing others. Secret Manager (--update-secrets) is the
-#    hardened alternative to a plaintext env var.
+# 3. Give the service its signing secret (the update restarts the service). --update-env-vars adds
+#    without clearing others. Secret Manager (--update-secrets) is the hardened alternative to a
+#    plaintext env var. The Fischer increment needs no env var — it arrives on the wire.
 gcloud run services update dicechess-bot-gcp --region "$REGION" \
-  --update-env-vars DICECHESS_WEBHOOK_SECRET=<secret>,LADDER_INCREMENT_MS=3000
+  --update-env-vars DICECHESS_WEBHOOK_SECRET=<secret>
 
 # 4. Join the rating ladder — passive from here; watch /bots/gcp/scala-monte-carlo converge.
 curl -X POST "$BASE/bot/ladder/join" -H "Authorization: Bearer <token>"

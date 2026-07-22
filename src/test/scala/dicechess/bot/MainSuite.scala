@@ -17,7 +17,7 @@ import lv.id.jc.dicechess.runtime.{Signatures, WebhookHandler}
 class MainSuite extends munit.FunSuite:
 
   private val Secret     = "test-webhook-secret"
-  private val strategy   = new Strategy(incrementMs = 0, overheadBufferMs = 5, defaultThinkMs = 200)
+  private val strategy   = new Strategy(overheadBufferMs = 5, defaultThinkMs = 200)
   private val initialNbk = FenParser.InitialPosition + " NBK"
 
   test("end to end over real HTTP: a signed, clocked turn returns a path the engine considers legal"):
@@ -37,7 +37,8 @@ class MainSuite extends munit.FunSuite:
       assertEquals(handshake.statusCode(), 200)
       assertEquals(parse(handshake.body()).toOption.get.hcursor.get[String]("nonce"), Right("live-1"))
 
-      val body = s"""{"type":"yourTurn","gameId":"g1","seat":"White","state":{"dfen":"$initialNbk","clocks":{"white":800,"black":800}}}"""
+      val body =
+        s"""{"type":"yourTurn","gameId":"g1","seat":"White","state":{"dfen":"$initialNbk","clocks":{"white":800,"black":800},"timeControl":{"Fischer":{"initialSeconds":300,"incrementSeconds":3}}}}"""
       val ts   = System.currentTimeMillis() / 1000
       val turn = post(
         body,

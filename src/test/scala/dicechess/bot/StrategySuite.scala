@@ -16,14 +16,14 @@ class StrategySuite extends munit.FunSuite:
     TurnGenerator.generateAllLegalTurnPaths(FenParser.parse(dfen).toOption.get).map(_.map(Strategy.toUci)).toSet
 
   test("returns one of the engine's own legal turn paths under a tight deadline"):
-    val moves = new Strategy(incrementMs = 0, overheadBufferMs = 5, defaultThinkMs = 200).chooseMoves(initialNbk, Some(800L))
+    val moves = new Strategy(overheadBufferMs = 5, defaultThinkMs = 200).chooseMoves(initialNbk, Some(800L), 3000L)
     assert(moves.nonEmpty, "the opening roll NBK must have legal moves")
     assert(legalPaths(initialNbk).contains(moves), s"$moves must be a legal path")
 
   test("plays a legal move with no clock (unlimited control)"):
-    val moves = new Strategy(incrementMs = 0, overheadBufferMs = 5, defaultThinkMs = 200).chooseMoves(initialNbk, None)
+    val moves = new Strategy(overheadBufferMs = 5, defaultThinkMs = 200).chooseMoves(initialNbk, None, 0L)
     assert(moves.nonEmpty)
     assert(legalPaths(initialNbk).contains(moves))
 
   test("an unusable dfen yields no moves (the server auto-passes)"):
-    assertEquals(new Strategy(0, 5, 200).chooseMoves("not-a-fen", Some(1000L)), Nil)
+    assertEquals(new Strategy(5, 200).chooseMoves("not-a-fen", Some(1000L), 0L), Nil)
