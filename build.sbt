@@ -30,7 +30,7 @@ ThisBuild / credentials ++= (for {
 } yield Credentials("GitHub Package Registry", "maven.pkg.github.com", user, token)).toSeq
 
 val DiceChessEngineVersion     = "1.10.4"
-val DiceChessBotRuntimeVersion = "0.1.1"
+val DiceChessBotRuntimeVersion = "0.2.0"
 val MunitVersion               = "1.3.4"
 
 lazy val root = (project in file("."))
